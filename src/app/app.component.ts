@@ -1,11 +1,11 @@
 import { Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { VehicleSelectionComponent } from './vehicle-selection/vehicle-selection.component';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [VehicleSelectionComponent],
   templateUrl: './app.component.html',
-  styleUrl: './app.component.css'
+  styleUrl: './app.component.css',
 })
 export class AppComponent {
   title = 'signals-test';
