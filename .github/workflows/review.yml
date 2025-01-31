@@ -34,7 +34,7 @@ jobs:
             
             if [[ ! "$subject" =~ ^(feat|fix|docs|style|refactor|test|chore):[[:space:]]+.+ ]]; then
               echo "❌ Invalid commit message format: $subject"
-              echo "ℹ️ Must follow: 'type: description' (e.g., 'chore: update workflow')"
+              echo "Must follow: 'type: description' (e.g., 'chore: update workflow')"
               exit 1
             fi
           done
