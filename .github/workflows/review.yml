@@ -1,4 +1,4 @@
-name: Review Workflow
+name: PR Compliance Checks
 
 on:
   pull_request:
@@ -16,11 +16,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get PR commits
           COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits")
 
-          # Extract messages and check pattern
           echo "$COMMITS" | jq -r '.[].commit.message' | while read -r msg; do
             if [[ ! "$msg" =~ ^(feat|fix|docs|style|refactor|test|chore):\s.+$ ]]; then
               echo "❌ Invalid commit message: $msg"
@@ -39,13 +37,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get PR reviews
           REVIEWS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.number }}/reviews")
 
           PR_AUTHOR="${{ github.event.pull_request.user.login }}"
 
-          # Count approved reviews from other users
           REVIEW_COUNT=$(echo "$REVIEWS" | jq --arg author "$PR_AUTHOR" \
             '[.[] | select(.state == "APPROVED" and .user.login != $author)] | unique_by(.user.login) | length')
 
