@@ -1,0 +1,65 @@
+name: PR Compliance Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: ["*"]
+
+jobs:
+  commit-message-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Check commit messages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get PR commits
+          COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits")
+
+          # Debug: Print raw messages
+          echo "Raw commit messages:"
+          echo "$COMMITS" | jq -r '.[].commit.message'
+
+          # Check pattern
+          echo "$COMMITS" | jq -r '.[].commit.message' | while read -r msg; do
+            # Check first line only (subject line)
+            subject=$(echo "$msg" | head -n 1)
+            
+            # Debug: Show escaped characters
+            echo -n "Checking: "; printf '%q\n' "$subject"
+            
+            if [[ ! "$subject" =~ ^(feat|fix|docs|style|refactor|test|chore):[[:space:]]+.+ ]]; then
+              echo "❌ Invalid commit message format: $subject"
+              echo "ℹ️ Must follow: 'type: description' (e.g., 'chore: update workflow')"
+              exit 1
+            fi
+          done
+
+  required-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Check for required review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REVIEWS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.number }}/reviews")
+
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+
+          REVIEW_COUNT=$(echo "$REVIEWS" | jq --arg author "$PR_AUTHOR" \
+            '[.[] | select(.state == "APPROVED" and .user.login != $author)] | unique_by(.user.login) | length')
+
+          if [ "$REVIEW_COUNT" -lt 1 ]; then
+            echo "❌ At least one approval required from other developers"
+            exit 1
+          else
+            echo "✅ $REVIEW_COUNT valid approval(s) found"
+          fi
