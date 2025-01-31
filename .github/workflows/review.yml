@@ -12,17 +12,29 @@ jobs:
       - name: Install jq
         run: sudo apt-get install -y jq
 
-      - name: Check commit messages
+     - name: Check commit messages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Get PR commits
           COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits")
-
+          
+          # Debug: Print raw messages
+          echo "Raw commit messages:"
+          echo "$COMMITS" | jq -r '.[].commit.message'
+          
+          # Check pattern
           echo "$COMMITS" | jq -r '.[].commit.message' | while read -r msg; do
-            if [[ ! "$msg" =~ ^(feat|fix|docs|style|refactor|test|chore):\s.+$ ]]; then
-              echo "❌ Invalid commit message: $msg"
-              echo "ℹ️ Messages must follow: 'type: description' format (e.g., 'feat: add new feature')"
+            # Check first line only (subject line)
+            subject=$(echo "$msg" | head -n 1)
+            
+            # Debug: Show escaped characters
+            echo -n "Checking: "; printf '%q\n' "$subject"
+            
+            if [[ ! "$subject" =~ ^(feat|fix|docs|style|refactor|test|chore):[[:space:]]+.+ ]]; then
+              echo "❌ Invalid commit message format: $subject"
+              echo "ℹ️ Must follow: 'type: description' (e.g., 'chore: update workflow')"
               exit 1
             fi
           done
