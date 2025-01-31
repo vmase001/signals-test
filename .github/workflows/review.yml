@@ -2,51 +2,56 @@ name: Review Workflow
 
 on:
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
+    types: [opened, synchronize, reopened]
+    branches: ["*"]
 
 jobs:
-  check-commit-message:
+  commit-message-check:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out the repository
-        uses: actions/checkout@v2
+      - name: Install jq
+        run: sudo apt-get install -y jq
 
-      - name: Fetch all branches
+      - name: Check commit messages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git fetch --prune --unshallow
+          # Get PR commits
+          COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.number }}/commits")
 
-      - name: Get PR commit messages
-        id: pr_commits
-        run: |
-          PR_COMMIT_MESSAGES=$(git log --pretty=format:"%s" origin/main..HEAD)
-          echo "PR_COMMIT_MESSAGES=$PR_COMMIT_MESSAGES" >> $GITHUB_ENV
+          # Extract messages and check pattern
+          echo "$COMMITS" | jq -r '.[].commit.message' | while read -r msg; do
+            if [[ ! "$msg" =~ ^(feat|fix|docs|style|refactor|test|chore):\s.+$ ]]; then
+              echo "❌ Invalid commit message: $msg"
+              echo "ℹ️ Messages must follow: 'type: description' format (e.g., 'feat: add new feature')"
+              exit 1
+            fi
+          done
 
-      - name: Validate commit messages
-        run: |
-          if [[ ! "$PR_COMMIT_MESSAGES" =~ ^(feat|fix|docs|chore|style|refactor|test):\ .{1,50}$ ]]; then
-            echo "Invalid commit message format. Each commit message should start with a type (e.g., feat, fix) and be followed by a short description."
-            exit 1
-          fi
-
-  check-approvals:
-    needs: check-commit-message
+  required-review:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Get PR approvals
-        id: pr_approvals
-        uses: peter-evans/pull-request-approval-status@v2
-        with:
-          pull-request-number: ${{ github.event.pull_request.number }}
+      - name: Install jq
+        run: sudo apt-get install -y jq
 
-      - name: Ensure at least one approval
+      - name: Check for required review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          APPROVALS=$(echo "${{ steps.pr_approvals.outputs.approvals }}" | jq '. | length')
-          if [ "$APPROVALS" -lt 1 ]; then
-            echo "This PR requires at least 1 approval to merge."
+          # Get PR reviews
+          REVIEWS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.number }}/reviews")
+
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+
+          # Count approved reviews from other users
+          REVIEW_COUNT=$(echo "$REVIEWS" | jq --arg author "$PR_AUTHOR" \
+            '[.[] | select(.state == "APPROVED" and .user.login != $author)] | unique_by(.user.login) | length')
+
+          if [ "$REVIEW_COUNT" -lt 1 ]; then
+            echo "❌ At least one approval required from other developers"
             exit 1
+          else
+            echo "✅ $REVIEW_COUNT valid approval(s) found"
           fi
