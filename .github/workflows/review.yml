@@ -1,0 +1,48 @@
+name: Review Workflow
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+jobs:
+  check-commit-message:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v2
+
+      - name: Get PR commit messages
+        id: pr_commits
+        run: |
+          PR_COMMIT_MESSAGES=$(git log --pretty=format:"%s" origin/main..HEAD)
+          echo "PR_COMMIT_MESSAGES=$PR_COMMIT_MESSAGES" >> $GITHUB_ENV
+
+      - name: Validate commit messages
+        run: |
+          if [[ ! "$PR_COMMIT_MESSAGES" =~ ^(feat|fix|docs|chore|style|refactor|test):\ .{1,50}$ ]]; then
+            echo "Invalid commit message format. Each commit message should start with a type (e.g., feat, fix) and be followed by a short description."
+            exit 1
+          fi
+
+  check-approvals:
+    needs: check-commit-message
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get PR approvals
+        id: pr_approvals
+        uses: peter-evans/pull-request-approval-status@v2
+        with:
+          pull-request-number: ${{ github.event.pull_request.number }}
+
+      - name: Ensure at least one approval
+        run: |
+          APPROVALS=$(echo "${{ steps.pr_approvals.outputs.approvals }}" | jq '. | length')
+          if [ "$APPROVALS" -lt 1 ]; then
+            echo "This PR requires at least 1 approval to merge."
+            exit 1
+          fi
